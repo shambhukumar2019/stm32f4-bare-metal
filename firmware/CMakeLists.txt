@@ -15,3 +15,14 @@ target_link_libraries(blink PUBLIC
     bsp
     app
 )
+
+add_custom_command(TARGET blink POST_BUILD
+    COMMAND ${CMAKE_SIZE} $<TARGET_FILE:blink>
+)
+
+
+add_custom_command(TARGET blink POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:blink> ${CMAKE_PROJECT_NAME}.bin
+    COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:blink> ${CMAKE_PROJECT_NAME}.hex
+)
+
