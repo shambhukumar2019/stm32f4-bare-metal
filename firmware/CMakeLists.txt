@@ -5,9 +5,12 @@ add_subdirectory(drivers)
 add_subdirectory(bsp)
 add_subdirectory(app)
 
-add_executable(blink app/main.c)
+add_executable(${CMAKE_PROJECT_NAME}.elf 
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/main.c
+)
 
-target_link_libraries(blink PUBLIC
+target_link_libraries(${CMAKE_PROJECT_NAME}.elf PUBLIC
+    stm32f407_mcu
     config
     vendor
     hal
@@ -16,13 +19,5 @@ target_link_libraries(blink PUBLIC
     app
 )
 
-add_custom_command(TARGET blink POST_BUILD
-    COMMAND ${CMAKE_SIZE} $<TARGET_FILE:blink>
-)
-
-
-add_custom_command(TARGET blink POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:blink> ${CMAKE_PROJECT_NAME}.bin
-    COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:blink> ${CMAKE_PROJECT_NAME}.hex
-)
+add_fw_artifacts(${CMAKE_PROJECT_NAME})
 

@@ -1,174 +1,254 @@
-# STM32 Blink Firmware
+# STM32F4 bare-metal blink firmware
 
-This repository contains a CMake-based firmware project for the STM32F407VG (Cortex-M4). It builds the `blink` firmware executable and, after linking, converts it to raw binary (`.bin`) and Intel HEX (`.hex`) formats.
+This repository builds a small bare-metal firmware image for an STM32F407VGTX target, using CMake and the GNU ARM toolchain. The current application is intentionally minimal: it configures the clock tree, enables the GPIO clock, sets the green LED on GPIOD pin 12 as an output, and toggles it forever.
 
-The project can be built with the bundled ARM GNU toolchain on a Linux host or in the published Docker development image.
+The board in use is an STM32F407VG-based Discovery-style board. The ST-LINK/V2.1 programmer appears as:
 
-## Project Structure
+```text
+Bus 001 Device 004: ID 0483:3752 STMicroelectronics ST-LINK/V2.1
+```
+
+## Project layout
 
 ```text
 .
-|-- CMakeLists.txt                    # Top-level CMake project
-|-- CMakePresets.json                 # Ninja configure/build preset
-|-- config/
-|   `-- arm-none-eabi.cmake           # ARM cross-compilation and linker settings
-|-- docker/
-|   `-- Dockerfile                    # Debian build environment and default build
-|-- firmware/
-|   |-- CMakeLists.txt                # Firmware target and post-link commands
-|   |-- app/
-|   |   `-- main.c                    # Application entry point
-|   |-- bsp/                          # STM32DISC1 board support
-|   |-- config/                       # Firmware configuration target
-|   |-- drivers/                      # Device driver layer
-|   |-- hal/                          # Hardware abstraction layer
-|   `-- vendor/
-|       `-- platform/
-|           |-- cmsis/                # ARM CMSIS headers
-|           `-- stm32f4xx/            # STM32F4 startup/device/linker files
-|-- tools/
-|   `-- arm_gcc/                      # Bundled arm-none-eabi toolchain (Git-ignored)
-|-- build/                            # Generated CMake files and firmware outputs (Git-ignored)
-|-- docs/                             # Project documentation
-|-- sim/                              # Simulation-related files
-`-- tests/                            # Test-related files
+├── CMakeLists.txt                    # Top-level project definition
+├── CMakePresets.json                 # Debug/release configure/build presets
+├── config/
+│   ├── arm-none-eabi.cmake          # Cross-compiling toolchain setup
+│   ├── stm32f407_target.cmake       # MCU flags and linker options
+│   └── stm32f4_post_build.cmake     # size + objcopy post-build steps
+├── docker/
+│   └── Dockerfile                   # Debian build environment
+├── firmware/
+│   ├── CMakeLists.txt               # Firmware target setup and link step
+│   ├── app/
+│   │   └── main.c                   # LED blink application
+│   ├── bsp/
+│   ├── config/
+│   ├── drivers/
+│   ├── hal/
+│   └── vendor/
+│       └── platform/
+│           └── stm32f4xx/
+│               ├── STM32F407VGTX.ld
+│               └── src/
+├── docs/
+├── sim/
+├── tests/
+├── tools/
+│   └── arm_gcc/                     # Optional local toolchain install
+├── build/                           # Generated build tree (ignored by Git)
+└── README.md
 ```
 
-`firmware/CMakeLists.txt` links the `blink` executable with the firmware libraries. Its post-build commands print memory usage and use `arm-none-eabi-objcopy` to generate `blink.bin` and `blink.hex`.
+## Firmware logic
 
-## Build on Linux
+The program lives in `firmware/app/main.c` and does the following:
 
-Prerequisites are CMake 3.20 or newer, Ninja, and the ARM GNU toolchain. This repository has a bundled toolchain under `tools/arm_gcc/`; add its `bin` directory to `PATH` before configuring:
+- calls `SystemClock_Config()` to derive the system clock from the PLL
+- sets the STM32F407 SYSCLK to 168 MHz using the PLL configuration used in the code
+- enables the GPIOD peripheral clock
+- sets `PD12` (green LED on the Discovery board) to output mode
+- toggles the LED forever in an infinite loop with a simple busy-wait delay
+
+The relevant LED pin is defined as:
+
+```c
+#define GPIO_PIN_12 12U
+#define GLED_PIN    GPIO_PIN_12
+#define LED_GPIO_PORT GPIOD
+```
+
+The LED is toggled with:
+
+```c
+LED_GPIO_PORT->ODR ^= (1U << GLED_PIN);
+```
+
+This is a bare-metal application, so there is no OS and no RTOS scheduler. The loop continues until the MCU is reset or power is removed.
+
+## CMake structure
+
+The top-level `CMakeLists.txt` is deliberately small:
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(blink LANGUAGES C ASM)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+include(${CMAKE_SOURCE_DIR}/config/stm32f407_target.cmake)
+include(${CMAKE_SOURCE_DIR}/config/stm32f4_post_build.cmake)
+
+add_subdirectory(firmware)
+```
+
+`config/arm-none-eabi.cmake` configures the cross-toolchain by locating:
+
+- `arm-none-eabi-gcc`
+- `arm-none-eabi-g++`
+- `arm-none-eabi-objcopy`
+- `arm-none-eabi-objdump`
+- `arm-none-eabi-size`
+
+The target settings in `config/stm32f407_target.cmake` add the Cortex-M4 flags to the MCU interface target:
+
+```cmake
+target_compile_options(stm32f407_mcu INTERFACE
+    -Wall -Wextra
+    -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+    -ffunction-sections -fdata-sections
+)
+
+target_link_options(stm32f407_mcu INTERFACE
+    -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+    --specs=nano.specs
+    -Wl,--print-memory-usage
+    -Wl,-Map=${CMAKE_PROJECT_NAME}.map
+    -Wl,--gc-sections
+    -T${CMAKE_SOURCE_DIR}/firmware/vendor/platform/stm32f4xx/STM32F407VGTX.ld
+)
+```
+
+The firmware target is created in `firmware/CMakeLists.txt` and linked against the MCU target and the project libraries:
+
+```cmake
+add_executable(${CMAKE_PROJECT_NAME}.elf
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/main.c
+)
+
+target_link_libraries(${CMAKE_PROJECT_NAME}.elf PUBLIC
+    stm32f407_mcu
+    config
+    vendor
+    hal
+    drivers
+    bsp
+    app
+)
+
+add_fw_artifacts(${CMAKE_PROJECT_NAME})
+```
+
+`config/stm32f4_post_build.cmake` adds the post-link size output and creates the firmware image files:
+
+```cmake
+add_custom_command(TARGET ${TARGET_NAME}.elf POST_BUILD
+    COMMAND ${CMAKE_SIZE} $<TARGET_FILE:${TARGET_NAME}.elf>
+)
+
+add_custom_command(TARGET ${TARGET_NAME}.elf POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${TARGET_NAME}.elf> ${TARGET_NAME}.bin
+    COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:${TARGET_NAME}.elf> ${TARGET_NAME}.hex
+)
+```
+
+## Building the project
+
+### Prerequisites
+
+- CMake 3.20 or newer
+- Ninja
+- GNU ARM embedded toolchain (`arm-none-eabi-*`)
+
+If the toolchain is installed locally outside the default PATH, add it before configuring:
 
 ```bash
 export PATH="$PWD/tools/arm_gcc/bin:$PATH"
 ```
 
-From the repository root, configure and build using the `default` preset:
+If the toolchain is installed system-wide, this may not be needed.
+
+### Configure and build
+
+The project defines `debug` and `release` presets in `CMakePresets.json`:
 
 ```bash
-cmake --preset default
-cmake --build --preset default
+cmake --preset debug
+cmake --build --preset debug
 ```
 
-The preset uses Ninja, configures a Debug build, and places generated files in `build/default/`. To build only the firmware executable (including its post-build steps):
+For a release build:
 
 ```bash
-cmake --build --preset default --target blink
+cmake --preset release
+cmake --build --preset release
 ```
 
-To print the compiler, linker, and `objcopy` commands as they execute:
-
-```bash
-cmake --build --preset default --verbose
-```
-
-### Firmware Artifacts
-
-After a successful link, the expected outputs are:
+The actual generated files are placed under the appropriate build directory, for example:
 
 ```text
-build/default/firmware/blink       # Linked executable (ELF)
-build/default/firmware/blink.bin   # Raw binary image
-build/default/firmware/blink.hex   # Intel HEX image
+build/debug/firmware/blink.elf
+build/debug/firmware/blink.bin
+build/debug/firmware/blink.hex
+build/debug/firmware/blink.map
 ```
 
-The `.bin` and `.hex` files are generated automatically when `blink` links. To explicitly regenerate them from the linked executable, run these from the repository root:
+To view the detailed compile and link commands while building:
 
 ```bash
-arm-none-eabi-objcopy -O binary \
-  build/default/firmware/blink build/default/firmware/blink.bin
-
-arm-none-eabi-objcopy -O ihex \
-  build/default/firmware/blink build/default/firmware/blink.hex
+cmake --build --preset debug --verbose
 ```
 
-These commands require `tools/arm_gcc/bin` to be on `PATH`. The generated files are firmware images; flashing them to hardware requires a separate programmer/debugger tool such as STM32CubeProgrammer or OpenOCD.
-
-### Clean the Build
-
-Remove compiled target outputs while keeping the CMake configuration:
+To build only the ELF target:
 
 ```bash
-cmake --build --preset default --target clean
+cmake --build --preset debug --target blink.elf
 ```
 
-Remove the complete generated build directory and configure from scratch:
+## Cleaning the build
+
+Remove the generated object files while keeping the configuration:
+
+```bash
+cmake --build --preset debug --target clean
+```
+
+Remove the build tree entirely and reconfigure from scratch:
 
 ```bash
 rm -rf build
-cmake --preset default
-cmake --build --preset default
+cmake --preset debug
+cmake --build --preset debug
 ```
 
-## Build with Docker
+## Docker build environment
 
-Build the image from the repository root:
+The repository includes a Docker build image under `docker/` for a Debian-based toolchain environment. The image is meant to provide the ARM GNU toolchain and CMake/Ninja so the firmware can be built in a repeatable environment.
+
+Typical usage from the repo root:
 
 ```bash
 docker build --progress=plain -f docker/Dockerfile -t blinker:v1 .
-```
-
-The image contains Debian, CMake, Ninja, and the ARM toolchain at `/opt/arm_gcc`. The default container command builds the project copy included in the image:
-
-```bash
 docker run --rm blinker:v1
 ```
 
-For active development, first clone the source repository and enter its root directory. Pull the published image, then start a shell with the local source mounted into the container:
+For local source work, the project can also be mounted into the container and built in the same way as the host environment:
 
 ```bash
-docker pull YOUR_DOCKERHUB_USERNAME/blinker:v1
-
 docker run --rm -it \
   -v "$PWD:/blink" \
   -w /blink \
   --entrypoint /bin/bash \
-  YOUR_DOCKERHUB_USERNAME/blinker:v1
+  blinker:v1
 ```
 
-Inside the container, configure and build as usual:
+Inside the container, run the same CMake commands listed above.
 
-```bash
-cmake --preset default
-cmake --build --preset default --verbose
-```
+## Programming the board
 
-Because the host project is mounted at `/blink`, source edits and build outputs are shared with the host. The ARM toolchain is installed separately at `/opt/arm_gcc`, outside the mounted directory, so the mount does not hide it. The `--rm` option removes the container when it exits; it does not remove files in the mounted project directory.
+After the build succeeds, program the generated `.bin` or `.hex` image to the target using an ST-LINK-compatible tool such as:
 
-To run the image's default build command against the mounted source without opening a shell:
+- STM32CubeProgrammer
+- OpenOCD
+- `st-flash` (if installed)
 
-```bash
-docker run --rm \
-  -v "$PWD:/blink" \
-  -w /blink \
-  YOUR_DOCKERHUB_USERNAME/blinker:v1
-```
+The project currently produces `blink.bin` and `blink.hex`, which are intended to be flashed to the STM32F407VGTX flash memory via the ST-LINK programmer connected to the board.
 
-Replace `YOUR_DOCKERHUB_USERNAME` with the Docker Hub account that owns the image.
+## Notes
 
-## Publish the Image to Docker Hub
+- The project is a bare-metal embedded firmware example; there is no RTOS or HAL driver framework layered above the direct register access.
+- The linker script is `firmware/vendor/platform/stm32f4xx/STM32F407VGTX.ld`.
+- The build intentionally uses the GNU ARM cross-compiler and generates raw binary and Intel HEX artifacts automatically after each link.
 
-Create a Docker Hub repository named `blinker`, then log in and tag the local image with the account namespace:
-
-```bash
-docker login
-docker tag blinker:v1 YOUR_DOCKERHUB_USERNAME/blinker:v1
-docker push YOUR_DOCKERHUB_USERNAME/blinker:v1
-```
-
-Other developers can then retrieve it with:
-
-```bash
-docker pull YOUR_DOCKERHUB_USERNAME/blinker:v1
-```
-
-The namespace is the Docker Hub username or organization; `blinker` is the repository name; `v1` is the tag. Publish new versions under a new tag (for example, `v2`) when changing the toolchain or image setup.
-
-## Toolchain Note
-
-`tools/` is listed in `.gitignore`, so the bundled ARM toolchain is not included in a normal Git commit. The Dockerfile currently copies `tools/arm_gcc/` when building the image, so the toolchain directory must be present in the Docker build context to rebuild the image. Developers who only clone the source repository can use the already-published Docker image; they do not need the compiler in their checkout because the image provides it at `/opt/arm_gcc`.
-
-## Target Configuration
-
-The toolchain file configures cross-compilation for ARM Cortex-M4, selects the STM32F407VGTX linker script, and enables linker memory-usage output. The current CMake options use a Debug build with `-O0 -g`.

@@ -9,13 +9,13 @@
 
 
 #define userConfigASSERT(reg, mask, val)\
-    do{\
-        if((reg & mask) != val)\
-        {\
-            __disable_irq();\
-            for(;;);\
-        }\
-    }while(0);
+        do{\
+            if((reg & mask) != val)\
+            {\
+                __disable_irq();\
+                for(;;);\
+            }\
+        }while(0);
 
 
 
@@ -24,7 +24,7 @@ void wait(void)
 {
     volatile uint16_t i = 0, j = 0;
 
-    for(;j < 1000; ++j)
+    for(;j < 100; ++j)
     {
         for(i = 0;i < 65535; ++i);
     }
@@ -107,7 +107,7 @@ int main(void)
     LED_GPIO_PORT->MODER &= (~(3<<(GLED_PIN * 2)));   //reset pin 12 dir mode state (input)
     LED_GPIO_PORT->MODER |= (1<<(GLED_PIN * 2));      //output dir mode
 
-    //default in push-pull output mode
+    //default push-pull output mode
     //default low speed
     //default pupd off
 
