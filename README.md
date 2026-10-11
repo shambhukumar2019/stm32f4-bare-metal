@@ -12,61 +12,52 @@ Bus 001 Device 004: ID 0483:3752 STMicroelectronics ST-LINK/V2.1
 
 ```text
 .
-├── CMakeLists.txt                    # Top-level project definition
-├── CMakePresets.json                 # Debug/release configure/build presets
+├── CMakeLists.txt                    # Top-level CMake project
+├── CMakePresets.json                 # Debug/release configure and build presets
 ├── config/
-│   ├── arm-none-eabi.cmake          # Cross-compiling toolchain setup
-│   ├── stm32f407_target.cmake       # MCU flags and linker options
-│   └── stm32f4_post_build.cmake     # size + objcopy post-build steps
+│   ├── arm-none-eabi.cmake           # ARM cross-compilation toolchain
+│   ├── stm32f407_target.cmake        # MCU compile/link options
+│   └── stm32f4_post_build.cmake      # Size report and BIN/HEX generation
 ├── docker/
-│   └── Dockerfile                   # Debian build environment
+│   └── Dockerfile                    # Containerized build environment
 ├── firmware/
-│   ├── CMakeLists.txt               # Firmware target setup and link step
+│   ├── CMakeLists.txt                # Firmware executable and library targets
 │   ├── app/
-│   │   └── main.c                   # LED blink application
+│   │   ├── CMakeLists.txt
+│   │   └── main.c                    # Clock setup and LED blink loop
 │   ├── bsp/
+│   │   ├── CMakeLists.txt
+│   │   ├── stm32disc1.c
+│   │   └── stm32disc1.h              # STM32DISC1 board support
 │   ├── config/
+│   │   └── CMakeLists.txt
 │   ├── drivers/
+│   │   └── CMakeLists.txt
 │   ├── hal/
+│   │   └── CMakeLists.txt
 │   └── vendor/
+│       ├── CMakeLists.txt
 │       └── platform/
+│           ├── cmsis/                # CMSIS core headers
+│           ├── platform.h            # Platform include
 │           └── stm32f4xx/
-│               ├── STM32F407VGTX.ld
-│               └── src/
-├── docs/
-├── sim/
-├── tests/
+│               ├── STM32F407VGTX.ld  # Linker script
+│               ├── inc/              # STM32F4 device headers
+│               ├── src/              # System and runtime support
+│               └── startup_stm32f407vgtx.s
+├── docs/                             # Documentation
+├── sim/                              # Simulation files
+├── tests/                            # Test files
 ├── tools/
-│   └── arm_gcc/                     # Optional local toolchain install
-├── build/                           # Generated build tree (ignored by Git)
-└── README.md
+│   └── arm_gcc/                      # Local ARM GNU toolchain (ignored by Git)
+│       ├── bin/                      # Compiler and utility executables
+│       └── arm-none-eabi/            # Target headers and libraries
+├── .gitignore
+├── README.md
+└── todo
 ```
 
-## Firmware logic
-
-The program lives in `firmware/app/main.c` and does the following:
-
-- calls `SystemClock_Config()` to derive the system clock from the PLL
-- sets the STM32F407 SYSCLK to 168 MHz using the PLL configuration used in the code
-- enables the GPIOD peripheral clock
-- sets `PD12` (green LED on the Discovery board) to output mode
-- toggles the LED forever in an infinite loop with a simple busy-wait delay
-
-The relevant LED pin is defined as:
-
-```c
-#define GPIO_PIN_12 12U
-#define GLED_PIN    GPIO_PIN_12
-#define LED_GPIO_PORT GPIOD
-```
-
-The LED is toggled with:
-
-```c
-LED_GPIO_PORT->ODR ^= (1U << GLED_PIN);
-```
-
-This is a bare-metal application, so there is no OS and no RTOS scheduler. The loop continues until the MCU is reset or power is removed.
+The CMake build directory (for example, `build/debug/`) is generated when configuring a preset and is not part of the source tree.
 
 ## CMake structure
 
@@ -251,4 +242,3 @@ The project currently produces `blink.bin` and `blink.hex`, which are intended t
 - The project is a bare-metal embedded firmware example; there is no RTOS or HAL driver framework layered above the direct register access.
 - The linker script is `firmware/vendor/platform/stm32f4xx/STM32F407VGTX.ld`.
 - The build intentionally uses the GNU ARM cross-compiler and generates raw binary and Intel HEX artifacts automatically after each link.
-
