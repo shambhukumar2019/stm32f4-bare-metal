@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v4
+
+      - name: Install build tool
+        run: sudo apt install arm-none-eabi-gcc -y
       
         
       - name: Build blinky project
