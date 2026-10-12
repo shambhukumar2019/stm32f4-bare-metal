@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     ninja-build \
     git \
     openocd \
+    cppcheck \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -18,9 +19,9 @@ ENV PATH="/opt/arm_gcc/bin:${PATH}"
 
 COPY . .
 
-RUN cmake --preset default
+RUN cmake --preset debug
 
-CMD ["cmake", "--build","--preset", "default"]
+CMD ["cmake", "--build","--preset", "debug"]
 
 
 

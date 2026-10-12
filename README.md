@@ -173,7 +173,7 @@ The actual generated files are placed under the appropriate build directory, for
 build/debug/firmware/blink.elf
 build/debug/firmware/blink.bin
 build/debug/firmware/blink.hex
-build/debug/firmware/blink.map
+build/debug/blink.map
 ```
 
 To view the detailed compile and link commands while building:
@@ -204,9 +204,15 @@ cmake --preset debug
 cmake --build --preset debug
 ```
 
+## GitHub Actions CI
+
+The workflow in `.github/workflows/ci.yml` runs on pushes, pull requests, and manual dispatches. It builds the project Docker image once, then uses that image to build both the `debug` and `release` CMake presets and run Cppcheck on the application and board-support code. Build tools are installed in the Dockerfile, so the workflow does not install them directly on the runner.
+
+Each successful build uploads a separate artifact named `firmware-debug` or `firmware-release`. The artifact contains the ELF executable, raw binary, Intel HEX, and linker map files. Download them from the workflow run's **Artifacts** section in the GitHub Actions tab; artifacts are retained for 14 days. The workflow only builds and analyzes firmware—it does not flash a connected board or publish a GitHub release.
+
 ## Docker build environment
 
-The repository includes a Docker build image under `docker/` for a Debian-based toolchain environment. The image is meant to provide the ARM GNU toolchain and CMake/Ninja so the firmware can be built in a repeatable environment.
+The repository includes a Docker build image under `docker/` for a Debian-based toolchain environment. It installs CMake, Ninja, the ARM GNU toolchain, and Cppcheck, so no local `tools/arm_gcc` directory is needed to build the image.
 
 Typical usage from the repo root:
 
@@ -225,7 +231,7 @@ docker run --rm -it \
   blinker:v1
 ```
 
-Inside the container, run the same CMake commands listed above.
+Inside the container, run the same CMake commands listed above. The mounted project directory is shared with the host, so build outputs are available locally.
 
 ## Programming the board
 
