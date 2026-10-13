@@ -21,7 +21,7 @@ jobs:
         run: sudo apt install gcc-arm-none-eabi cppcheck -y
 
       - name: cppcheck static analysis
-        run: cppcheck firmware
+        run: cppcheck --force --enable=all --enable=information firmware
       
         
       - name: Build blinky project
