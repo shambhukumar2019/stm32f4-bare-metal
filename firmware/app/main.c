@@ -7,6 +7,9 @@
 #define LED_GPIO_PORT       GPIOD
 
 
+void SystemClock_Config(void);
+
+
 
 #define userConfigASSERT(reg, mask, val)\
         do{\
@@ -30,6 +33,36 @@ void wait(void)
     }
 }
     
+
+
+int main(void)
+{
+    SystemClock_Config();
+    
+    //enable gpiod clk
+    RCC->AHB1ENR |= (1<<3U);
+
+    //this reduces pwr consumption of schmitt trigger
+    LED_GPIO_PORT->MODER |= 0xffffffff;               //make all pins analog mode
+    
+    LED_GPIO_PORT->MODER &= (~(3<<(GLED_PIN * 2)));   //reset pin 12 dir mode state (input)
+    LED_GPIO_PORT->MODER |= (1<<(GLED_PIN * 2));      //output dir mode
+
+    //default push-pull output mode
+    //default low speed
+    //default pupd off
+
+    for(;;)
+    {
+        //toggle green led pin output
+        LED_GPIO_PORT->ODR ^= (1<<GLED_PIN);
+        wait();
+    }
+
+    return 0;
+}
+
+
 
 /**
   * @brief System Clock Configuration
@@ -92,33 +125,5 @@ void SystemClock_Config(void)
 
 }
 
-
-
-int main(void)
-{
-    SystemClock_Config();
-    
-    //enable gpiod clk
-    RCC->AHB1ENR |= (1<<3U);
-
-    //this reduces pwr consumption of schmitt trigger
-    LED_GPIO_PORT->MODER |= 0xffffffff;               //make all pins analog mode
-    
-    LED_GPIO_PORT->MODER &= (~(3<<(GLED_PIN * 2)));   //reset pin 12 dir mode state (input)
-    LED_GPIO_PORT->MODER |= (1<<(GLED_PIN * 2));      //output dir mode
-
-    //default push-pull output mode
-    //default low speed
-    //default pupd off
-
-    for(;;)
-    {
-        //toggle green led pin output
-        LED_GPIO_PORT->ODR ^= (1<<GLED_PIN);
-        wait();
-    }
-
-    return 0;
-}
 
 
