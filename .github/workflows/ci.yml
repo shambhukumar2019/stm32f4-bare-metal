@@ -12,6 +12,11 @@ jobs:
       - name: checkout code
         uses: actions/checkout@v5
 
+      - name: cpp static analysis
+        uses: deep5050/cppcheck-action@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install build tool
         run: sudo apt install gcc-arm-none-eabi -y
       
