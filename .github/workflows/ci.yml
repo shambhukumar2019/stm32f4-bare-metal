@@ -21,7 +21,7 @@ jobs:
         run: sudo apt install gcc-arm-none-eabi cppcheck -y
 
       - name: cppcheck static analysis
-        run: cppcheck --addon=misra.json --enable=all --force firmware
+        run: cppcheck --addon=misra.json --enable=all --force -Ifirmware/vendor/platform firmware
       
       - name: Build blinky project
         run: cmake --preset debug && cmake --build --preset debug
