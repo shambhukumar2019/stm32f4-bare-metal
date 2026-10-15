@@ -12,13 +12,13 @@ void SystemClock_Config(void);
 
 
 #define userConfigASSERT(reg, mask, val)\
-        ( do{\
+        { do{\
             if((reg & mask) != val)\
             {\
                 __disable_irq();\
                 for(;;);\
             }\
-        }while(0); )
+        }while(0); }
 
 
 
